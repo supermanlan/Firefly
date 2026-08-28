@@ -1,0 +1,618 @@
+---
+// src/pages/admin/index.astro
+---
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Firefly 站长全功能后台</title>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/js-yaml/dist/js-yaml.min.js"></script>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0f172a; color: #f8fafc; margin: 0; padding: 20px; }
+    .card { max-width: 1200px; margin: 20px auto; background: #1e293b; border-radius: 12px; padding: 24px; border: 1px solid #334155; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.5); }
+    .flex-space { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #334155; padding-bottom: 16px; margin-bottom: 20px; }
+    .flex-gap { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    input, select, textarea { width: 100%; background: #0f172a; border: 1px solid #334155; color: #fff; padding: 10px; border-radius: 6px; font-size: 14px; }
+    input:focus, select:focus, textarea:focus { outline: none; border-color: #3b82f6; }
+    button { background: #2563eb; color: #fff; border: none; padding: 8px 16px; border-radius: 6px; font-weight: 600; cursor: pointer; transition: 0.2s; }
+    button:hover { opacity: 0.9; }
+    .btn-green { background: #16a34a; }
+    .btn-danger { background: #dc2626; }
+    .btn-gray { background: #475569; }
+    .btn-sm { padding: 4px 10px; font-size: 12px; }
+    .badge { background: #064e3b; color: #34d399; padding: 3px 10px; border-radius: 20px; font-size: 12px; border: 1px solid #059669; }
+    .tag-badge { background: #1e3a8a; color: #93c5fd; border: 1px solid #3b82f6; padding: 2px 8px; border-radius: 12px; font-size: 11px; margin-right: 4px; display: inline-block; }
+    
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+    th, td { text-align: left; padding: 12px; border-bottom: 1px solid #334155; font-size: 14px; }
+    th { background: #0f172a; color: #94a3b8; }
+    
+    .editor-container { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 12px; }
+    @media (max-width: 768px) { .editor-container { grid-template-columns: 1fr; } }
+    .preview-box { background: #0f172a; border: 1px solid #334155; border-radius: 6px; padding: 16px; height: 380px; overflow-y: auto; color: #cbd5e1; line-height: 1.6; }
+    .preview-box h1, .preview-box h2, .preview-box h3 { color: #fff; border-bottom: 1px solid #334155; padding-bottom: 4px; }
+    .preview-box code { background: #334155; padding: 2px 6px; border-radius: 4px; font-family: monospace; }
+    .preview-box img, .preview-box video { max-width: 100%; border-radius: 6px; margin: 8px 0; }
+
+    .status-banner { display: none; padding: 10px 16px; border-radius: 6px; margin-bottom: 16px; font-size: 14px; }
+    .status-success { background: #064e3b; color: #34d399; border: 1px solid #059669; }
+    .status-error { background: #7f1d1d; color: #fca5a5; border: 1px solid #991b1b; }
+    
+    .tool-bar { background: #0f172a; padding: 8px; border: 1px solid #334155; border-bottom: none; border-radius: 6px 6px 0 0; display: flex; gap: 8px; align-items: center; }
+    .color-preview { width: 100%; height: 20px; border-radius: 4px; margin-top: 6px; }
+  </style>
+</head>
+<body>
+
+  <div class="card">
+    <div id="loading" style="text-align: center; padding: 40px; color: #94a3b8;">正在验证身份并抓取全站数据...</div>
+
+    <div id="unauthorized" style="display: none; text-align: center; padding: 30px;">
+      <h1 style="color: #ef4444; margin-top: 0;">403 无权限访问</h1>
+      <p id="unauthorizedMsg" style="color: #94a3b8;">未检测到有效的 GitHub 凭证。</p>
+      <button onclick="updateToken()">🔑 输入/更新 Token</button>
+    </div>
+
+    <div id="adminPanel" style="display: none;">
+      <div class="flex-space">
+        <h2 style="margin: 0; font-size: 20px;">⚙️ Firefly 站长全功能控制台</h2>
+        <div>
+          <span id="userInfo" class="badge">已登录站长</span>
+          <button onclick="updateToken()" class="btn-green btn-sm" style="margin-left: 8px;">🔑 更新 Token</button>
+          <button onclick="logout()" class="btn-gray btn-sm" style="margin-left: 4px;">退出登录</button>
+        </div>
+      </div>
+
+      <div id="statusBanner" class="status-banner"></div>
+
+      <!-- 导航选项卡 -->
+      <div class="flex-gap" style="margin-bottom: 20px;">
+        <button id="btnTabList" onclick="switchTab('list')">📚 文章管理</button>
+        <button id="btnTabEdit" onclick="switchTab('edit')" class="btn-gray">✍️ 新建/编辑文章</button>
+        <button id="btnTabCategory" onclick="switchTab('category')" class="btn-gray">🏷️ 分类/标签统计</button>
+        <button id="btnTabTheme" onclick="switchTab('theme')" class="btn-gray">🎨 默认主题与调色设置</button>
+        <button id="btnTabNotice" onclick="switchTab('notice')" class="btn-gray">📢 全站公告管理</button>
+      </div>
+
+      <!-- 模块 1：文章管理 -->
+      <div id="tabList">
+        <div class="flex-space" style="border: none; margin-bottom: 10px;">
+          <h3 style="margin: 0; font-size: 16px;">全站文章列表</h3>
+          <button onclick="fetchAllData()" class="btn-gray btn-sm">🔄 重新扫描全库</button>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>路径/文件名</th>
+              <th>文章标题</th>
+              <th>分类</th>
+              <th>标签</th>
+              <th>状态</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody id="postsTableBody">
+            <tr><td colspan="6" style="text-align:center;">正在扫描 GitHub 仓库...</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- 模块 2：新建/编辑文章 -->
+      <div id="tabEdit" style="display: none;">
+        <h3 id="editorTitle" style="margin-top: 0;">新建文章</h3>
+        <div style="display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 12px; margin-bottom: 12px;">
+          <input id="postTitle" type="text" placeholder="文章标题 (title)" oninput="updatePreview()" />
+          <input id="postSlug" type="text" placeholder="相对路径/文件名 (例: guide/my-post.md)" />
+          <input id="postCategory" type="text" placeholder="文章分类 (category)" />
+        </div>
+
+        <div style="margin-bottom: 12px;">
+          <input id="postTags" type="text" placeholder="文章标签 (tags，用英文逗号或中文逗号隔开)" />
+        </div>
+
+        <div class="flex-gap" style="margin-bottom: 12px;">
+          <label style="cursor: pointer; font-size: 14px; color: #cbd5e1;">
+            <input id="postDraft" type="checkbox" style="width: auto; margin-right: 6px;" /> 设为草稿 (draft: true)
+          </label>
+          <label style="cursor: pointer; font-size: 14px; color: #cbd5e1; margin-left: 20px;">
+            <input id="postPinned" type="checkbox" style="width: auto; margin-right: 6px;" /> 首页置顶 (pinned: true)
+          </label>
+        </div>
+
+        <!-- 编辑器工具栏与双栏编辑器 -->
+        <div class="tool-bar">
+          <span style="font-size: 12px; color: #94a3b8;">插入媒体：</span>
+          <button class="btn-sm btn-gray" onclick="document.getElementById('fileUploader').click()">🖼️ 插入图片/视频</button>
+          <input type="file" id="fileUploader" accept="image/*,video/*" style="display: none;" onchange="uploadMedia(this)" />
+          <span id="uploadStatus" style="font-size: 12px; color: #34d399; margin-left: 8px;"></span>
+        </div>
+
+        <div class="editor-container" style="margin-top: 0;">
+          <div>
+            <textarea id="postContent" style="height: 380px; font-family: monospace; border-radius: 0 0 6px 6px;" placeholder="在此输入 Markdown 正文内容..." oninput="updatePreview()"></textarea>
+          </div>
+          <div>
+            <div id="previewBox" class="preview-box" style="height: 418px;"></div>
+          </div>
+        </div>
+
+        <div class="flex-gap" style="margin-top: 16px;">
+          <button id="btnSubmit" onclick="submitArticle()" class="btn-green">🚀 提交并同步至 GitHub</button>
+          <button onclick="resetEditor()" class="btn-gray">清空编辑框</button>
+        </div>
+      </div>
+
+      <!-- 模块 3：分类与标签统计看板 -->
+      <div id="tabCategory" style="display: none;">
+        <h3 style="margin-top: 0;">📁 全站所有分类</h3>
+        <div id="categoryContainer" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; margin-bottom: 24px;"></div>
+
+        <h3 style="margin-top: 0;">🏷️ 全站所有标签</h3>
+        <div id="tagsContainer" style="display: flex; flex-wrap: wrap; gap: 8px;"></div>
+      </div>
+
+      <!-- 模块 4：主题默认色相与外观默认配置管理 -->
+      <div id="tabTheme" style="display: none;">
+        <h3 style="margin-top: 0;">🎨 网站默认主题色与外观</h3>
+        <p style="color: #94a3b8; font-size: 14px;">此处的修改将更新 `src/config.ts` 中的默认主题色相值（Hue）。当访客未在右上角自定义调色时，页面将以此处配置的颜色展示。</p>
+        
+        <div style="max-width: 500px; margin-top: 20px;">
+          <div style="margin-bottom: 16px;">
+            <label style="display: block; margin-bottom: 8px; font-size: 14px;">默认主题色相 Hue (0 ~ 360)：<b id="hueVal">250</b></label>
+            <input type="range" id="themeHue" min="0" max="360" value="250" oninput="updateColorPreview(this.value)" style="width: 100%; cursor: pointer;" />
+            <div id="hueColorBox" class="color-preview" style="background: hsl(250, 80%, 70%);"></div>
+          </div>
+
+          <button id="btnSaveConfig" onclick="saveThemeConfig()" class="btn-green">💾 保存主题配置并推送 GitHub</button>
+        </div>
+      </div>
+
+      <!-- 模块 5：全站公告管理 -->
+      <div id="tabNotice" style="display: none;">
+        <h3 style="margin-top: 0;">📢 全站公告配置</h3>
+        <p style="color: #94a3b8; font-size: 14px;">修改下方公告内容后提交，将直接更新全局公告看板。</p>
+        <div style="margin-bottom: 16px;">
+          <label style="display: block; margin-bottom: 6px; font-size: 14px; color: #cbd5e1;">公告标语 / 正文内容：</label>
+          <textarea id="noticeContent" rows="5" placeholder="欢迎来到我的博客！这是一则示例公告。"></textarea>
+        </div>
+        <button id="btnSaveNotice" onclick="saveNotice()" class="btn-green">💾 保存并发布公告</button>
+      </div>
+
+    </div>
+  </div>
+
+<script is:inline>
+  const OWNER_USERNAME = "supermanlan"; 
+  const REPO_NAME = "Firefly"; 
+  const POSTS_PATH = "src/content/posts"; 
+  const CONFIG_PATH = "src/config.ts";
+  const NOTICE_PATH = "src/content/notice.md";
+
+  let allFilesCache = [];
+  let currentEditingSha = ""; 
+
+  function showStatus(msg, isError = false) {
+    const banner = document.getElementById('statusBanner');
+    banner.innerText = msg;
+    banner.className = 'status-banner ' + (isError ? 'status-error' : 'status-success');
+    banner.style.display = 'block';
+    setTimeout(() => { banner.style.display = 'none'; }, 4000);
+  }
+
+  function updateToken() {
+    const newToken = prompt("请输入拥有 Read and Write 权限的 GitHub Personal Access Token：");
+    if (newToken && newToken.trim()) {
+      localStorage.setItem('gh_token', newToken.trim());
+      location.reload();
+    }
+  }
+
+  function logout() {
+    localStorage.removeItem('gh_token');
+    location.reload();
+  }
+
+  function initAdmin() {
+    const token = localStorage.getItem('gh_token');
+    if (!token) { updateToken(); return; }
+
+    fetch('https://api.github.com/user', {
+      headers: { 'Authorization': 'token ' + token, 'Accept': 'application/vnd.github.v3+json' }
+    })
+    .then(res => { if (!res.ok) throw new Error("Token 无效或过期"); return res.json(); })
+    .then(userData => {
+      document.getElementById('loading').style.display = 'none';
+      document.getElementById('adminPanel').style.display = 'block';
+      document.getElementById('userInfo').innerText = '已验证站长：' + userData.login;
+      fetchAllData();
+      fetchNotice();
+      fetchThemeConfig();
+    })
+    .catch(err => { showUnauthorized(err.message); });
+  }
+
+  // 1. 递归扫描指定目录
+  async function fetchAllData() {
+    const tableBody = document.getElementById('postsTableBody');
+    tableBody.innerHTML = '<tr><td colspan="6" style="text-align:center;">扫描 GitHub 仓库文章中...</td></tr>';
+
+    try {
+      allFilesCache = [];
+      await scanDirectory(POSTS_PATH);
+
+      tableBody.innerHTML = '';
+      const categoriesMap = {};
+      const tagsMap = {};
+
+      for (const file of allFilesCache) {
+        const fileRes = await fetch(file.download_url);
+        const rawContent = await fileRes.text();
+        const parsed = parseYamlFrontmatter(rawContent);
+
+        const cat = parsed.category || "未分类";
+        categoriesMap[cat] = (categoriesMap[cat] || 0) + 1;
+
+        let tags = parsed.tags || [];
+        if (typeof tags === 'string') tags = tags.split(',').map(t => t.trim());
+        tags.forEach(t => { if(t) tagsMap[t] = (tagsMap[t] || 0) + 1; });
+
+        const isDraft = parsed.draft === true || parsed.draft === "true";
+        const relPath = file.path.replace(POSTS_PATH + '/', '');
+
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td><code>${relPath}</code></td>
+          <td><b>${parsed.title || file.name}</b></td>
+          <td><span class="badge" style="background:#1e3a8a; color:#93c5fd; border-color:#3b82f6;">${cat}</span></td>
+          <td>${tags.map(t => `<span class="tag-badge">${t}</span>`).join('') || '-'}</td>
+          <td>${isDraft ? '<span style="color:#ef4444;">🔒 草稿</span>' : '<span style="color:#34d399;">🌐 公开</span>'}</td>
+          <td>
+            <button class="btn-sm" onclick="editArticle('${file.path}', '${file.sha}')">编辑</button>
+            <button class="btn-sm btn-danger" onclick="deleteArticle('${file.path}', '${file.sha}')">删除</button>
+          </td>
+        `;
+        tableBody.appendChild(tr);
+      }
+
+      renderCategoriesAndTags(categoriesMap, tagsMap);
+    } catch (e) {
+      tableBody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:#ef4444;">扫描失败: ' + e.message + '</td></tr>';
+    }
+  }
+
+  async function scanDirectory(path) {
+    const token = localStorage.getItem('gh_token');
+    const res = await fetch(`https://api.github.com/repos/${OWNER_USERNAME}/${REPO_NAME}/contents/${path}`, {
+      headers: { 'Authorization': 'token ' + token, 'Accept': 'application/vnd.github.v3+json' }
+    });
+    const items = await res.json();
+    if (!Array.isArray(items)) return;
+
+    for (const item of items) {
+      if (item.type === 'file' && (item.name.endsWith('.md') || item.name.endsWith('.mdx'))) {
+        allFilesCache.push(item);
+      } else if (item.type === 'dir') {
+        await scanDirectory(item.path);
+      }
+    }
+  }
+
+  function parseYamlFrontmatter(content) {
+    let result = { body: content };
+    if (content.startsWith('---')) {
+      const parts = content.split('---');
+      if (parts.length >= 3) {
+        try {
+          const yamlData = jsyaml.load(parts[1]);
+          if (typeof yamlData === 'object' && yamlData !== null) {
+            result = { ...yamlData, body: parts.slice(2).join('---').trim() };
+          }
+        } catch (e) {}
+      }
+    }
+    return result;
+  }
+
+  // 2. 主题调色预览与配置读取保存
+  function updateColorPreview(hue) {
+    document.getElementById('hueVal').innerText = hue;
+    document.getElementById('hueColorBox').style.background = `hsl(${hue}, 80%, 70%)`;
+  }
+
+  async function fetchThemeConfig() {
+    const token = localStorage.getItem('gh_token');
+    try {
+      const res = await fetch(`https://api.github.com/repos/${OWNER_USERNAME}/${REPO_NAME}/contents/${CONFIG_PATH}`, {
+        headers: { 'Authorization': 'token ' + token, 'Accept': 'application/vnd.github.v3+json' }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const content = decodeURIComponent(escape(atob(data.content)));
+        window.configSha = data.sha;
+        window.rawConfigContent = content;
+
+        const match = content.match(/hue:\s*(\d+)/);
+        if (match) {
+          const hue = match[1];
+          document.getElementById('themeHue').value = hue;
+          updateColorPreview(hue);
+        }
+      }
+    } catch(e) {}
+  }
+
+  async function saveThemeConfig() {
+    const token = localStorage.getItem('gh_token');
+    const hue = document.getElementById('themeHue').value;
+    if (!window.rawConfigContent) return;
+
+    const newContent = window.rawConfigContent.replace(/hue:\s*\d+/, `hue: ${hue}`);
+    const payload = {
+      message: `CMS: 修改默认主题色相为 ${hue}`,
+      content: btoa(unescape(encodeURIComponent(newContent))),
+      sha: window.configSha
+    };
+
+    try {
+      const res = await fetch(`https://api.github.com/repos/${OWNER_USERNAME}/${REPO_NAME}/contents/${CONFIG_PATH}`, {
+        method: 'PUT',
+        headers: { 'Authorization': 'token ' + token, 'Accept': 'application/vnd.github.v3+json', 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (res.ok) {
+        const data = await res.json();
+        window.configSha = data.content.sha;
+        window.rawConfigContent = newContent;
+        showStatus("✅ 默认主题调色已成功推送！");
+      } else {
+        showStatus("配置保存失败", true);
+      }
+    } catch (e) {
+      showStatus("保存出错: " + e.message, true);
+    }
+  }
+
+  // 3. 媒体上传
+  async function uploadMedia(input) {
+    const file = input.files[0];
+    if (!file) return;
+
+    const token = localStorage.getItem('gh_token');
+    const statusEl = document.getElementById('uploadStatus');
+    statusEl.innerText = "上传中...";
+
+    const reader = new FileReader();
+    reader.onload = async function() {
+      const base64Content = reader.result.split(',')[1];
+      const fileName = `${Date.now()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, '')}`;
+      const savePath = `public/uploads/${fileName}`;
+
+      try {
+        const res = await fetch(`https://api.github.com/repos/${OWNER_USERNAME}/${REPO_NAME}/contents/${savePath}`, {
+          method: 'PUT',
+          headers: { 'Authorization': 'token ' + token, 'Accept': 'application/vnd.github.v3+json', 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: `Upload media: ${fileName}`, content: base64Content })
+        });
+
+        if (res.ok) {
+          const fileUrl = `/uploads/${fileName}`;
+          statusEl.innerText = "✅ 上传成功！";
+          setTimeout(() => { statusEl.innerText = ""; }, 3000);
+
+          const isVideo = file.type.startsWith('video/');
+          const mediaMarkdown = isVideo 
+            ? `\n<video controls width="100%" src="${fileUrl}"></video>\n`
+            : `\n![${file.name}](${fileUrl})\n`;
+
+          insertAtCursor(document.getElementById('postContent'), mediaMarkdown);
+          updatePreview();
+        }
+      } catch (e) { statusEl.innerText = "❌ 上传失败: " + e.message; }
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function insertAtCursor(textarea, text) {
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    textarea.value = textarea.value.substring(0, start) + text + textarea.value.substring(end);
+    textarea.selectionStart = textarea.selectionEnd = start + text.length;
+  }
+
+  async function editArticle(filePath, sha) {
+    const token = localStorage.getItem('gh_token');
+    currentEditingSha = sha;
+    switchTab('edit');
+    document.getElementById('editorTitle').innerText = "编辑: " + filePath;
+
+    try {
+      const res = await fetch(`https://api.github.com/repos/${OWNER_USERNAME}/${REPO_NAME}/contents/${filePath}`, {
+        headers: { 'Authorization': 'token ' + token, 'Accept': 'application/vnd.github.v3+json' }
+      });
+      const data = await res.json();
+      const content = decodeURIComponent(escape(atob(data.content)));
+      const parsed = parseYamlFrontmatter(content);
+
+      document.getElementById('postTitle').value = parsed.title || "";
+      document.getElementById('postSlug').value = filePath.replace(POSTS_PATH + '/', '');
+      document.getElementById('postCategory').value = parsed.category || "";
+      
+      let tags = parsed.tags || [];
+      if (Array.isArray(tags)) tags = tags.join(', ');
+      document.getElementById('postTags').value = tags;
+
+      document.getElementById('postDraft').checked = parsed.draft === "true" || parsed.draft === true;
+      document.getElementById('postPinned').checked = parsed.pinned === "true" || parsed.pinned === true;
+      document.getElementById('postContent').value = parsed.body || "";
+
+      updatePreview();
+    } catch (e) { showStatus("读取失败: " + e.message, true); }
+  }
+
+  async function submitArticle() {
+    const token = localStorage.getItem('gh_token');
+    const title = document.getElementById('postTitle').value.trim();
+    let relPath = document.getElementById('postSlug').value.trim();
+    const category = document.getElementById('postCategory').value.trim() || "默认";
+    const rawTags = document.getElementById('postTags').value.trim();
+    const isDraft = document.getElementById('postDraft').checked;
+    const isPinned = document.getElementById('postPinned').checked;
+    const body = document.getElementById('postContent').value;
+
+    if (!title || !relPath) { alert("请填写标题和文件路径！"); return; }
+    if (!relPath.endsWith('.md') && !relPath.endsWith('.mdx')) relPath += '.md';
+
+    const tagsArray = rawTags ? rawTags.split(/[,，]/).map(t => t.trim()).filter(Boolean) : [];
+    
+    const yamlObj = {
+      title: title,
+      published: new Date().toISOString().split('T')[0],
+      category: category,
+      tags: tagsArray,
+      draft: isDraft,
+      pinned: isPinned
+    };
+
+    const fileContent = `---\n${jsyaml.dump(yamlObj)}---\n\n${body}`;
+    const base64Content = btoa(unescape(encodeURIComponent(fileContent)));
+    const fullPath = `${POSTS_PATH}/${relPath}`;
+
+    const payload = { message: `CMS: ${currentEditingSha ? '更新' : '新建'} ${relPath}`, content: base64Content };
+    if (currentEditingSha) payload.sha = currentEditingSha;
+
+    try {
+      const res = await fetch(`https://api.github.com/repos/${OWNER_USERNAME}/${REPO_NAME}/contents/${fullPath}`, {
+        method: 'PUT',
+        headers: { 'Authorization': 'token ' + token, 'Accept': 'application/vnd.github.v3+json', 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      if (res.ok) {
+        showStatus("✅ 文章已成功推送至仓库！");
+        resetEditor();
+        switchTab('list');
+        fetchAllData();
+      } else {
+        const err = await res.json();
+        showStatus("提交失败: " + (err.message || ""), true);
+      }
+    } catch (e) { showStatus("网络错误: " + e.message, true); }
+  }
+
+  async function fetchNotice() {
+    const token = localStorage.getItem('gh_token');
+    try {
+      const res = await fetch(`https://api.github.com/repos/${OWNER_USERNAME}/${REPO_NAME}/contents/${NOTICE_PATH}`, {
+        headers: { 'Authorization': 'token ' + token, 'Accept': 'application/vnd.github.v3+json' }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const content = decodeURIComponent(escape(atob(data.content)));
+        document.getElementById('noticeContent').value = content;
+        window.noticeSha = data.sha;
+      }
+    } catch(e) {}
+  }
+
+  async function saveNotice() {
+    const token = localStorage.getItem('gh_token');
+    const content = document.getElementById('noticeContent').value;
+    const btn = document.getElementById('btnSaveNotice');
+    btn.innerText = "保存中...";
+
+    const payload = {
+      message: "CMS: 更新全站公告",
+      content: btoa(unescape(encodeURIComponent(content)))
+    };
+    if (window.noticeSha) payload.sha = window.noticeSha;
+
+    try {
+      const res = await fetch(`https://api.github.com/repos/${OWNER_USERNAME}/${REPO_NAME}/contents/${NOTICE_PATH}`, {
+        method: 'PUT',
+        headers: { 'Authorization': 'token ' + token, 'Accept': 'application/vnd.github.v3+json', 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (res.ok) {
+        const data = await res.json();
+        window.noticeSha = data.content.sha;
+        showStatus("✅ 全站公告已发布更新！");
+      }
+    } catch (e) { showStatus("保存错误: " + e.message, true); }
+    finally { btn.innerText = "💾 保存并发布公告"; }
+  }
+
+  function renderCategoriesAndTags(catMap, tagMap) {
+    const catBox = document.getElementById('categoryContainer');
+    catBox.innerHTML = '';
+    Object.keys(catMap).forEach(c => {
+      catBox.innerHTML += `<div style="background:#0f172a; border:1px solid #334155; padding:12px; border-radius:8px;">
+        <div style="font-size:12px; color:#94a3b8;">分类</div>
+        <div style="font-size:16px; font-weight:bold; color:#fff;">${c}</div>
+        <div style="font-size:12px; color:#34d399; margin-top:4px;">${catMap[c]} 篇文章</div>
+      </div>`;
+    });
+
+    const tagBox = document.getElementById('tagsContainer');
+    tagBox.innerHTML = '';
+    Object.keys(tagMap).forEach(t => {
+      tagBox.innerHTML += `<span class="badge" style="background:#1e3a8a; color:#93c5fd; border-color:#3b82f6; font-size:13px;">${t} (${tagMap[t]})</span>`;
+    });
+  }
+
+  async function deleteArticle(path, sha) {
+    if (!confirm(`确定彻底删除文件 [${path}] 吗？`)) return;
+    const token = localStorage.getItem('gh_token');
+    try {
+      const res = await fetch(`https://api.github.com/repos/${OWNER_USERNAME}/${REPO_NAME}/contents/${path}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': 'token ' + token, 'Accept': 'application/vnd.github.v3+json', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: `CMS: 删除文章 ${path}`, sha: sha })
+      });
+      if (res.ok) { showStatus("✅ 文件已成功删除"); fetchAllData(); }
+    } catch (e) { showStatus("删除失败: " + e.message, true); }
+  }
+
+  function updatePreview() {
+    const text = document.getElementById('postContent').value;
+    if (window.marked) document.getElementById('previewBox').innerHTML = marked.parse(text);
+  }
+
+  function resetEditor() {
+    currentEditingSha = "";
+    document.getElementById('editorTitle').innerText = "新建文章";
+    document.getElementById('postTitle').value = "";
+    document.getElementById('postSlug').value = "";
+    document.getElementById('postCategory').value = "";
+    document.getElementById('postTags').value = "";
+    document.getElementById('postDraft').checked = false;
+    document.getElementById('postPinned').checked = false;
+    document.getElementById('postContent').value = "";
+    document.getElementById('previewBox').innerHTML = "";
+  }
+
+  function showUnauthorized(msg) {
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('adminPanel').style.display = 'none';
+    document.getElementById('unauthorized').style.display = 'block';
+    if (msg) document.getElementById('unauthorizedMsg').innerText = msg;
+  }
+
+  function switchTab(tab) {
+    ['List', 'Edit', 'Category', 'Theme', 'Notice'].forEach(t => {
+      const el = document.getElementById('tab' + t);
+      const btn = document.getElementById('btnTab' + t);
+      if (el && btn) {
+        el.style.display = (tab.toLowerCase() === t.toLowerCase()) ? 'block' : 'none';
+        btn.className = (tab.toLowerCase() === t.toLowerCase()) ? '' : 'btn-gray';
+      }
+    });
+  }
+
+  if (document.readyState === 'loading') { document.addEventListener('DOMContentLoaded', initAdmin); }
+  else { initAdmin(); }
+</script>
+</body>
+</html>
